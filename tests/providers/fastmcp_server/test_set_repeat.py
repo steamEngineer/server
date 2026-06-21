@@ -14,6 +14,7 @@ from unittest.mock import MagicMock
 import pytest
 from fastmcp import Client, FastMCP
 from fastmcp.exceptions import ToolError
+from music_assistant_models.enums import RepeatMode
 
 from music_assistant.providers.fastmcp_server.tools.playback import build_playback_server
 
@@ -34,7 +35,7 @@ async def test_set_repeat_accepts_valid_modes(
         mock_mass.player_queues.set_repeat.reset_mock()
         async with Client(mounted_playback) as client:
             await client.call_tool("playback_set_repeat", {"queue_id": "q1", "repeat_mode": mode})
-        mock_mass.player_queues.set_repeat.assert_called_once_with("q1", mode)
+        mock_mass.player_queues.set_repeat.assert_called_once_with("q1", RepeatMode(mode))
 
 
 async def test_set_repeat_rejects_invalid_mode(mounted_playback: FastMCP) -> None:
@@ -51,4 +52,4 @@ async def test_set_repeat_defaults_to_off(mounted_playback: FastMCP, mock_mass: 
     mock_mass.player_queues.set_repeat.reset_mock()
     async with Client(mounted_playback) as client:
         await client.call_tool("playback_set_repeat", {"queue_id": "q1"})
-    mock_mass.player_queues.set_repeat.assert_called_once_with("q1", "off")
+    mock_mass.player_queues.set_repeat.assert_called_once_with("q1", RepeatMode.OFF)
