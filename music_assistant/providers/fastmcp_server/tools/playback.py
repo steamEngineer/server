@@ -6,9 +6,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from fastmcp import FastMCP
-from fastmcp.exceptions import ToolError
 from mcp.types import ToolAnnotations
-from music_assistant_models.enums import RepeatMode
 
 from ..tags import Tag
 from ._common import TIMEOUT_MUTATION, TIMEOUT_QUERY
@@ -215,30 +213,5 @@ def build_playback_server(mass: MusicAssistant) -> FastMCP:
         :param index: Zero-based position in the queue (``>= 0``).
         """
         await mass.player_queues.play_index(queue_id, index)
-
-    @sub.tool(
-        tags={Tag.CONTROL_PLAYBACK},
-        annotations=_control_annotations(title="Set repeat mode", idempotent=True),
-        timeout=TIMEOUT_MUTATION,
-    )  # type: ignore[untyped-decorator, unused-ignore]
-    async def set_repeat(queue_id: str, repeat_mode: str = "off") -> None:
-        """
-        Set the repeat mode for the given queue.
-
-        :param queue_id: Queue identifier from ``QueueBrief.queue_id``.
-        :param repeat_mode: Repeat mode:
-
-            - ``off`` (default): No repeating.
-            - ``one``: Repeat the current track.
-            - ``all``: Repeat the entire queue.
-        """
-        # RepeatMode._missing_ silently falls back to UNKNOWN for invalid values
-        # instead of raising ValueError, so we must validate explicitly.
-        mode = RepeatMode(repeat_mode)
-        if mode is RepeatMode.UNKNOWN:
-            valid = ", ".join(f"``{e.value}``" for e in RepeatMode if e is not RepeatMode.UNKNOWN)
-            raise ToolError(f"Invalid repeat_mode {repeat_mode!r}. Valid options: {valid}")
-
-        mass.player_queues.set_repeat(queue_id, mode)
 
     return sub
