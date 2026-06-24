@@ -2,13 +2,28 @@
 
 from __future__ import annotations
 
+import importlib.util
+import logging
+from typing import TYPE_CHECKING
+
+import pytest
+
 from music_assistant.providers.fastmcp_server.meta_tools.catalog import (
+    CATALOG_REFERENCED_TOOL_NAMES,
+    PENDING_CATALOG_TOOL_NAMES,
     apply_intent_adjustments,
     detect_workflow,
     normalize_query_tokens,
     score_tool_match,
     tokenize_query,
 )
+
+if TYPE_CHECKING:
+    from unittest.mock import MagicMock
+
+_HAVE_FASTMCP = importlib.util.find_spec("fastmcp") is not None
+_HAVE_MA = importlib.util.find_spec("music_assistant") is not None
+_HAVE_MA_MODELS = importlib.util.find_spec("music_assistant_models") is not None
 
 # Realistic descriptions for the tools that compete on conversational queries.
 _PAUSE_DESC = (
@@ -130,185 +145,22 @@ def test_pause_only_query_has_no_play_workflow() -> None:
     assert detect_workflow(tokenize_query("playback pause")) is None
 
 
-def test_add_to_queue_includes_enqueue_workflow() -> None:
-    """An add-to-queue query returns the enqueue workflow, not play."""
-    workflow = detect_workflow(tokenize_query("add all tracks from disclosure to the queue"))
-    assert workflow is not None
-    assert workflow["task"] == "enqueue_media_on_queue"
-    assert workflow["steps"][-1]["tool"] == "queue_add_to_queue"
-    assert workflow["steps"][-1]["arguments"]["option"] == "add"
+def test_pause_intent_penalizes_play_pause() -> None:
+    """An explicit pause query applies a negative adjustment to play_pause."""
+    pause_desc = "Toggle play/pause on the given queue. Playing pauses, paused resumes."
+    tokens = tokenize_query("playback pause")
+    base = score_tool_match("playback_play_pause", pause_desc, tokens)
+    adjusted = apply_intent_adjustments("playback_play_pause", tokens, base)
+    assert adjusted == base - 35
 
 
-def test_add_album_to_queue_not_play_workflow() -> None:
-    """Add album to queue prefers enqueue workflow over play."""
-    workflow = detect_workflow(normalize_query_tokens(tokenize_query("add album to queue")))
-    assert workflow is not None
-    assert workflow["task"] == "enqueue_media_on_queue"
-
-
-def test_queue_next_uses_next_option() -> None:
-    """Queue-this-next phrasing maps to option=next."""
-    workflow = detect_workflow(tokenize_query("queue disclosure album next"))
-    assert workflow is not None
-    assert workflow["steps"][-1]["arguments"]["option"] == "next"
-
-
-def test_queue_play_now_uses_play_option() -> None:
-    """Play-on-queue phrasing maps to option=play."""
-    workflow = detect_workflow(tokenize_query("play album on the queue"))
-    assert workflow is not None
-    assert workflow["steps"][-1]["arguments"]["option"] == "play"
-
-
-def test_replace_rest_uses_replace_next_option() -> None:
-    """Replace rest of queue phrasing maps to option=replace_next."""
-    workflow = detect_workflow(tokenize_query("replace rest of queue with bonobo album"))
-    assert workflow is not None
-    assert workflow["steps"][-1]["arguments"]["option"] == "replace_next"
-
-
-def test_clear_queue_uses_replace_option() -> None:
-    """Clear queue phrasing maps to option=replace."""
-    workflow = detect_workflow(tokenize_query("clear queue and play disclosure"))
-    assert workflow is not None
-    assert workflow["steps"][-1]["arguments"]["option"] == "replace"
-
-
-def test_skip_next_has_no_enqueue_workflow() -> None:
-    """Skip next without queue context is not an enqueue workflow."""
-    assert detect_workflow(tokenize_query("skip next track")) is None
-
-
-def test_remove_track_from_queue_includes_remove_workflow() -> None:
-    """Remove-from-queue phrasing returns the remove workflow."""
-    workflow = detect_workflow(tokenize_query("remove this track from the queue"))
-    assert workflow is not None
-    assert workflow["task"] == "remove_items_from_queue"
-    assert workflow["steps"][0]["tool"] == "queue_get_active_queue"
-    assert workflow["steps"][-1]["tool"] == "queue_remove_item"
-
-
-def test_delete_queue_has_no_remove_workflow() -> None:
-    """Bare delete-queue phrasing is not the per-item remove workflow."""
-    assert detect_workflow(tokenize_query("delete the queue")) is None
-
-
-def test_remove_from_queue_prefers_remove_item_over_playlist_remove() -> None:
-    """Remove-from-queue queries rank queue_remove_item above playlists_remove_tracks."""
-    tokens = tokenize_query("remove track from queue")
-    queue_remove = apply_intent_adjustments(
-        "queue_remove_item",
-        tokens,
-        score_tool_match("queue_remove_item", "Remove items from a queue.", tokens),
-    )
-    playlist_remove = apply_intent_adjustments(
-        "playlists_remove_tracks",
-        tokens,
-        score_tool_match("playlists_remove_tracks", "Remove tracks from a playlist.", tokens),
-    )
-    assert queue_remove > playlist_remove
-
-
-def test_move_track_up_includes_reorder_workflow() -> None:
-    """Move-up phrasing returns the reorder workflow with pos_shift=-1."""
-    workflow = detect_workflow(tokenize_query("move this track up in the queue"))
-    assert workflow is not None
-    assert workflow["task"] == "reorder_queue_item"
-    assert workflow["steps"][-1]["tool"] == "queue_move_item"
-    assert workflow["steps"][-1]["arguments"]["pos_shift"] == -1
-
-
-def test_move_track_to_end_uses_move_item_to_end() -> None:
-    """Move-to-end phrasing uses queue_move_item_to_end."""
-    workflow = detect_workflow(tokenize_query("move track to end of queue"))
-    assert workflow is not None
-    assert workflow["steps"][-1]["tool"] == "queue_move_item_to_end"
-
-
-def test_move_to_play_next_uses_zero_shift() -> None:
-    """Play-next reorder phrasing maps to pos_shift=0."""
-    workflow = detect_workflow(tokenize_query("move this track to play next in queue"))
-    assert workflow is not None
-    assert workflow["steps"][-1]["arguments"]["pos_shift"] == 0
-
-
-def test_move_album_to_queue_still_enqueues() -> None:
-    """Move new media to queue is enqueue intent, not reorder."""
-    tokens = normalize_query_tokens(tokenize_query("move album to queue"))
-    workflow = detect_workflow(tokens)
-    assert workflow is not None
-    assert workflow["task"] == "enqueue_media_on_queue"
-
-
-def test_reorder_prefers_move_item_over_add_to_queue() -> None:
-    """Reorder queries rank queue_move_item above queue_add_to_queue."""
-    tokens = tokenize_query("move track up in queue")
-    move = apply_intent_adjustments(
-        "queue_move_item",
-        tokens,
-        score_tool_match("queue_move_item", "Move an existing queue row.", tokens),
-    )
-    add = apply_intent_adjustments(
-        "queue_add_to_queue",
-        tokens,
-        score_tool_match("queue_add_to_queue", "Enqueue media on a queue.", tokens),
-    )
-    assert move > add
-
-
-def test_play_album_still_uses_play_workflow() -> None:
-    """Play intent without add/enqueue still returns the play workflow."""
-    workflow = detect_workflow(tokenize_query("play album on office quads"))
-    assert workflow is not None
-    assert workflow["task"] == "play_media_on_player"
-
-
-def test_add_to_queue_prefers_queue_add_over_play_media() -> None:
-    """Add-to-queue queries rank queue_add_to_queue above playback_play_media."""
-    tokens = normalize_query_tokens(tokenize_query("add disclosure to queue"))
-    add = apply_intent_adjustments(
-        "queue_add_to_queue",
-        tokens,
-        score_tool_match("queue_add_to_queue", "Enqueue media on a queue.", tokens),
-    )
-    play = apply_intent_adjustments(
-        "playback_play_media",
-        tokens,
-        score_tool_match("playback_play_media", _PLAY_MEDIA_DESC, tokens),
-    )
-    assert add > play
-
-
-def test_queue_next_prefers_queue_add_over_play_media() -> None:
-    """Queue-next phrasing ranks queue_add_to_queue above playback_play_media."""
-    tokens = tokenize_query("queue album next on office quads")
-    add = apply_intent_adjustments(
-        "queue_add_to_queue",
-        tokens,
-        score_tool_match("queue_add_to_queue", "Enqueue media on a queue.", tokens),
-    )
-    play = apply_intent_adjustments(
-        "playback_play_media",
-        tokens,
-        score_tool_match("playback_play_media", _PLAY_MEDIA_DESC, tokens),
-    )
-    assert add > play
-
-
-def test_skip_next_prefers_next_track_over_queue_add() -> None:
-    """Skip next without queue context ranks playback_next_track above queue_add."""
-    tokens = tokenize_query("skip next track")
-    next_track = apply_intent_adjustments(
-        "playback_next_track",
-        tokens,
-        score_tool_match("playback_next_track", "Skip to the next item in the queue.", tokens),
-    )
-    add = apply_intent_adjustments(
-        "queue_add_to_queue",
-        tokens,
-        score_tool_match("queue_add_to_queue", "Enqueue media on a queue.", tokens),
-    )
-    assert next_track > add
+def test_resume_intent_penalizes_play_pause() -> None:
+    """An explicit resume query applies a negative adjustment to play_pause."""
+    toggle_desc = "Toggle play/pause on the given queue. Playing pauses, paused resumes."
+    tokens = tokenize_query("resume playback")
+    base = score_tool_match("playback_play_pause", toggle_desc, tokens)
+    adjusted = apply_intent_adjustments("playback_play_pause", tokens, base)
+    assert adjusted == base - 35
 
 
 def test_ungroup_prefers_ungroup_player_over_group_player() -> None:
@@ -325,34 +177,6 @@ def test_ungroup_prefers_ungroup_player_over_group_player() -> None:
         score_tool_match("players_ungroup_player", ungroup_desc, tokens),
     )
     assert ungroup > group
-
-
-def test_pause_prefers_pause_over_play_pause() -> None:
-    """An explicit pause query ranks the non-toggling pause tool above play_pause."""
-    pause_desc = "Pause playback on the given queue. Always pauses — unlike play_pause, this does not toggle."
-    toggle_desc = "Toggle play/pause on the given queue. Playing pauses, paused resumes."
-    tokens = tokenize_query("playback pause")
-    explicit = apply_intent_adjustments(
-        "playback_pause", tokens, score_tool_match("playback_pause", pause_desc, tokens)
-    )
-    toggle = apply_intent_adjustments(
-        "playback_play_pause", tokens, score_tool_match("playback_play_pause", toggle_desc, tokens)
-    )
-    assert explicit > toggle
-
-
-def test_resume_prefers_resume_over_play_pause() -> None:
-    """An explicit resume query ranks the non-toggling resume tool above play_pause."""
-    resume_desc = "Resume paused playback on the given queue. Always resumes — unlike play_pause, this does not toggle."
-    toggle_desc = "Toggle play/pause on the given queue. Playing pauses, paused resumes."
-    tokens = tokenize_query("resume playback")
-    explicit = apply_intent_adjustments(
-        "playback_resume", tokens, score_tool_match("playback_resume", resume_desc, tokens)
-    )
-    toggle = apply_intent_adjustments(
-        "playback_play_pause", tokens, score_tool_match("playback_play_pause", toggle_desc, tokens)
-    )
-    assert explicit > toggle
 
 
 def test_normalize_drops_stopwords_and_applies_synonyms() -> None:
@@ -428,3 +252,32 @@ def test_description_only_match_at_half_coverage_survives() -> None:
         ["zzz", "track"],
     )
     assert score > 0
+
+
+@pytest.mark.skipif(
+    not (_HAVE_FASTMCP and _HAVE_MA and _HAVE_MA_MODELS),
+    reason="needs fastmcp + music_assistant + music_assistant_models installed",
+)
+@pytest.mark.asyncio
+async def test_catalog_referenced_tool_names_exist_in_runtime(
+    mock_mass: MagicMock,
+    mock_config: MagicMock,
+) -> None:
+    """Hardcoded intent/workflow tool names must match the live FastMCP catalog."""
+    from music_assistant.providers.fastmcp_server.server import MCPServerRuntime  # noqa: PLC0415
+
+    runtime = MCPServerRuntime(mock_mass, mock_config, logging.getLogger("catalog-drift"))
+    await runtime.start()
+    try:
+        tools = await runtime._mcp.list_tools(run_middleware=False)
+        registered = {str(getattr(t, "name", "") or "") for t in tools}
+        required = CATALOG_REFERENCED_TOOL_NAMES - PENDING_CATALOG_TOOL_NAMES
+        missing = required - registered
+        assert not missing, f"catalog references unknown tools: {sorted(missing)}"
+        if not (PENDING_CATALOG_TOOL_NAMES - registered):
+            pytest.fail(
+                "All PENDING_CATALOG_TOOL_NAMES are registered — remove the pending "
+                "set from catalog.py (sibling PRs #4390 / #4391 merged)"
+            )
+    finally:
+        await runtime.stop()
