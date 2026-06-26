@@ -76,7 +76,7 @@ class TestGetAlbumTracksTool:
         async with Client(library_server) as client:
             result = await client.call_tool(
                 "library_get_album_tracks",
-                {"album_uri": "spotify://album/abc"},
+                {"uri": "spotify://album/abc"},
             )
         text_blocks = [c.text for c in result.content if hasattr(c, "text")]
         assert any("Black Sands" in t for t in text_blocks)
@@ -126,7 +126,7 @@ class TestGetArtistAlbumsTool:
         async with Client(library_server) as client:
             result = await client.call_tool(
                 "library_get_artist_albums",
-                {"artist_uri": "spotify://artist/abc"},
+                {"uri": "spotify://artist/abc"},
             )
         text_blocks = [c.text for c in result.content if hasattr(c, "text")]
         assert any("deadmau5" in t for t in text_blocks)

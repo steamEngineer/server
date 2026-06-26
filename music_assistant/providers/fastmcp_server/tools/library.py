@@ -135,7 +135,7 @@ def _register_uri_tools(sub: FastMCP, mass: MusicAssistant) -> None:
         annotations=_readonly("Get artist albums"),
         timeout=TIMEOUT_QUERY,
     )  # type: ignore[untyped-decorator, unused-ignore]
-    async def get_artist_albums(artist_uri: str, ctx: Context | None = None) -> ArtistAlbumsResult:
+    async def get_artist_albums(uri: str, ctx: Context | None = None) -> ArtistAlbumsResult:
         """
         List albums by an artist, newest first.
 
@@ -148,11 +148,12 @@ def _register_uri_tools(sub: FastMCP, mass: MusicAssistant) -> None:
 
         Raises ``ToolError`` if the URI does not resolve or is not an artist.
 
-        :param artist_uri: A Music Assistant artist URI (e.g. from ``ArtistBrief.uri``).
+        :param uri: A Music Assistant artist URI of the form
+            ``<provider>://artist/<id>`` (e.g. as found on ``ArtistBrief.uri``).
         """
         if ctx is not None:
-            await ctx.info(f"Fetching albums for artist {artist_uri!r}")
-        return await artist_albums_from_uri(mass, artist_uri)
+            await ctx.info(f"Fetching albums for artist {uri!r}")
+        return await artist_albums_from_uri(mass, uri)
 
     @sub.tool(
         tags={Tag.QUERY_LIBRARY},
@@ -208,7 +209,7 @@ def _register_uri_tools(sub: FastMCP, mass: MusicAssistant) -> None:
         annotations=_readonly("Get album tracks"),
         timeout=TIMEOUT_QUERY,
     )  # type: ignore[untyped-decorator, unused-ignore]
-    async def get_album_tracks(album_uri: str, ctx: Context | None = None) -> AlbumTracksResult:
+    async def get_album_tracks(uri: str, ctx: Context | None = None) -> AlbumTracksResult:
         """
         List the tracks on an album, in disc and track order.
 
@@ -221,11 +222,12 @@ def _register_uri_tools(sub: FastMCP, mass: MusicAssistant) -> None:
 
         Raises ``ToolError`` if the URI does not resolve or is not an album.
 
-        :param album_uri: A Music Assistant album URI (e.g. from ``AlbumBrief.uri``).
+        :param uri: A Music Assistant album URI of the form
+            ``<provider>://album/<id>`` (e.g. as found on ``AlbumBrief.uri``).
         """
         if ctx is not None:
-            await ctx.info(f"Fetching tracks for album {album_uri!r}")
-        return await album_tracks_from_uri(mass, album_uri)
+            await ctx.info(f"Fetching tracks for album {uri!r}")
+        return await album_tracks_from_uri(mass, uri)
 
 
 def build_library_server(mass: MusicAssistant) -> FastMCP:
