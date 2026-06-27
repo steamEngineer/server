@@ -377,7 +377,7 @@ async def test_queue_get_active_queue_by_player_or_queue_id(
         result = await client.call_tool("queue_get_active_queue", call_args)
     assert result.data.items[0].name == "Behind Your Walls"
     mock_mass.player_queues.get_active_queue.assert_called_with("lenco")
-    mock_mass.player_queues.items.assert_called_with("lenco", limit=25)
+    mock_mass.player_queues.items.assert_called_with("lenco", limit=25, offset=0)
 
 
 async def test_queue_get_active_queue_requires_an_identifier(mock_mass: Any) -> None:

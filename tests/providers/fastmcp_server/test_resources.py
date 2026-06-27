@@ -245,7 +245,7 @@ async def test_queue_resource_returns_json_text_for_brief(mock_mass: MagicMock) 
     assert parsed["repeat"] == "all"
     assert len(parsed["items"]) == 3
     # The handler is documented to cap at MA's default page size of 500.
-    mock_mass.player_queues.items.assert_called_once_with("q1", limit=500)
+    mock_mass.player_queues.items.assert_called_once_with("q1", limit=500, offset=0)
 
 
 async def test_queue_resource_returns_null_for_missing(mock_mass: MagicMock) -> None:

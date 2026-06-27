@@ -36,5 +36,5 @@ def register_player_resources(mcp: Any, mass: MusicAssistant) -> None:
         queue = mass.player_queues.get(queue_id)
         if queue is None:
             return None
-        items = mass.player_queues.items(queue_id, limit=500)
-        return to_resource_text(to_brief_queue(queue, items=list(items)))
+        items = mass.player_queues.items(queue_id, limit=500, offset=0)
+        return to_resource_text(to_brief_queue(queue, items=list(items), items_offset=0))

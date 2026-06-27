@@ -404,18 +404,31 @@ def to_brief_player(player: Any, active_queue: Any = None) -> PlayerBrief:
     )
 
 
-def to_brief_queue(queue: Any, items: Sequence[Any] | None = None) -> QueueBrief:
+def min_insert_index(queue: object) -> int:
+    """Return the first queue index where new rows may be inserted."""
+    floor = getattr(queue, "current_index", None)
+    floor_val = floor if isinstance(floor, int) else -1
+    buf = getattr(queue, "index_in_buffer", None)
+    if isinstance(buf, int):
+        floor_val = max(floor_val, buf)
+    return floor_val + 1
+
+
+def to_brief_queue(
+    queue: Any, items: Sequence[Any] | None = None, *, items_offset: int = 0
+) -> QueueBrief:
     """
     Convert a PlayerQueue-like object to ``QueueBrief``.
 
     :param queue: queue-like object with ``queue_id``, ``current_index``, etc.
     :param items: optional iterable of queue items to include.
+    :param items_offset: absolute queue index of ``items[0]`` when materialised.
     """
     repeat_mode = getattr(queue, "repeat_mode", None)
     repeat_value = str(getattr(repeat_mode, "value", repeat_mode)) if repeat_mode else "off"
     brief_items: list[QueueItemBrief] = []
     if items:
-        for it in items:
+        for row_index, it in enumerate(items):
             now_playing = _external_now_playing(it)
             item_name = (
                 now_playing.title
@@ -426,6 +439,7 @@ def to_brief_queue(queue: Any, items: Sequence[Any] | None = None) -> QueueBrief
                 QueueItemBrief(
                     item_id=str(getattr(it, "queue_item_id", "")),
                     name=item_name,
+                    index=items_offset + row_index,
                     duration=_int(getattr(it, "duration", None)),
                     artists=_names(getattr(getattr(it, "media_item", None), "artists", None)),
                 )
@@ -449,6 +463,9 @@ def to_brief_queue(queue: Any, items: Sequence[Any] | None = None) -> QueueBrief
         repeat=repeat_value,
         items=brief_items,
         available=bool(getattr(queue, "available", True)),
+        index_in_buffer=_int(getattr(queue, "index_in_buffer", None)),
+        next_insertable_index=min_insert_index(queue),
+        items_start_index=items_offset,
     )
 
 

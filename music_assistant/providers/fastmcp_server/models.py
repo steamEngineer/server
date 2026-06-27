@@ -106,6 +106,7 @@ class QueueItemBrief:
 
     item_id: str
     name: str
+    index: int
     duration: int | None = None
     artists: list[str] = field(default_factory=list)
 
@@ -128,6 +129,9 @@ class QueueBrief:
     repeat: str
     items: list[QueueItemBrief] = field(default_factory=list)
     available: bool = True
+    index_in_buffer: int | None = None
+    next_insertable_index: int | None = None
+    items_start_index: int = 0
 
 
 @dataclass
@@ -138,6 +142,7 @@ class AddToQueueResult:
     uri: str
     name: str
     option: str
+    index: int | None = None
 
 
 @dataclass
